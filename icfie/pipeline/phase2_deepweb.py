@@ -38,10 +38,12 @@ class DeepWebEnricher:
                 urls.append(link)
                 url_to_seed[link] = i
 
-        # Crawl websites
+        # Crawl websites and Facebook
         crawled_data = {}
+        fb_data = {}
         if urls:
             crawled_data = await self.apify.crawl_website_text(urls)
+            fb_data = await self.apify.run_facebook_enrichment(urls)
 
         # Merge back
         corpus_results = []
@@ -50,8 +52,17 @@ class DeepWebEnricher:
 
             # Add website data if crawled
             url = seed.get("website") or seed.get("link")
+
+            markdown_parts = []
             if url and url in crawled_data:
-                enrichment.website_markdown = crawled_data[url]
+                markdown_parts.append(crawled_data[url])
+
+            # Check Facebook specific data
+            if url and url in fb_data:
+                markdown_parts.append(fb_data[url])
+
+            if markdown_parts:
+                enrichment.website_markdown = "\n\n---\n\n".join(markdown_parts)
 
             # Instagram extraction (basic, full Apify actor cost too much for free tier)
             ig = seed.get("instagram")

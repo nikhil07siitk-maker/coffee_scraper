@@ -30,7 +30,9 @@ class DiscoveryOrchestrator:
         tasks = [
             self._run_maps(district, state),
             self._run_search(district, state),
-            self._run_osm(district)
+            self._run_osm(district),
+            self._run_indiamart(district, state),
+            self._run_justdial(district, state)
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -71,6 +73,12 @@ class DiscoveryOrchestrator:
 
     async def _run_osm(self, district: str) -> List[Dict]:
         return await self.overpass.query_coffee_estates(district)
+
+    async def _run_indiamart(self, district: str, state: str) -> List[Dict]:
+        return await self.apify.run_indiamart_discovery(district, state)
+
+    async def _run_justdial(self, district: str, state: str) -> List[Dict]:
+        return await self.apify.run_justdial_discovery(district, state)
 
     def _basic_dedup(self, seeds: List[Dict]) -> List[Dict]:
         """Simple deduplication to prevent crawling the same site multiple times."""

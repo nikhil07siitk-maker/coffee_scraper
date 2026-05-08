@@ -85,8 +85,8 @@ class EstateRecord(BaseModel):
     estate_name: str = Field(..., min_length=3)
     state: str
     district: str
-    latitude: float = Field(..., ge=8.0, le=37.0)
-    longitude: float = Field(..., ge=68.0, le=97.0)
+    latitude: Optional[float] = Field(None, ge=8.0, le=37.0)
+    longitude: Optional[float] = Field(None, ge=68.0, le=97.0)
     geo_accuracy: GeoAccuracy = GeoAccuracy.UNKNOWN
     discovery_sources: List[str] = Field(..., min_length=1)
     record_status: RecordStatus = RecordStatus.PENDING_VERIFICATION

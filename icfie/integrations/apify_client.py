@@ -53,6 +53,77 @@ class ApifyClient:
         """Reset failure count on success."""
         self._failure_count = 0
 
+    async def _run_actor(self, actor_id: str, run_input: Dict[str, Any], max_wait: int = 600) -> List[Dict[str, Any]]:
+        """Generic method to run an Apify actor and handle common errors."""
+        loop = asyncio.get_event_loop()
+        try:
+            run = await loop.run_in_executor(
+                None,
+                lambda: self.client.actor(actor_id).call(run_input=run_input)
+            )
+
+            if not run or not run.get("id"):
+                raise ApifyApiError(f"Failed to start actor run for {actor_id}", 500)
+
+            run_id = run["id"]
+            logger.info(f"Started actor run {run_id} for {actor_id}")
+
+            # Poll for results
+            waited = 0
+            while waited < max_wait:
+                await asyncio.sleep(5)
+                waited += 5
+
+                run_info = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.run(run_id).get()
+                )
+
+                status = run_info.get("status")
+                if status == "SUCCEEDED":
+                    break
+                elif status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+                    logger.error(f"Run {run_id} {status} for {actor_id}")
+                    return []
+
+            dataset_id = run_info.get("defaultDatasetId")
+            if not dataset_id:
+                return []
+
+            # Fetch results
+            items = []
+            offset = 0
+            limit = 100
+
+            while True:
+                page = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.dataset(dataset_id).list_items(
+                        offset=offset, limit=limit
+                    )
+                )
+
+                page_items = page.get("items", [])
+                if not page_items:
+                    break
+
+                items.extend(page_items)
+                offset += len(page_items)
+
+                if len(page_items) < limit:
+                    break
+
+            return items
+
+        except ApifyApiError as e:
+            logger.error(f"Apify API error for {actor_id}: {e}")
+            self._record_failure()
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error running {actor_id}: {e}")
+            self._record_failure()
+            return []
+
     async def run_google_maps_discovery(
         self,
         district: str,
@@ -118,111 +189,129 @@ class ApifyClient:
             "scrapeReviews": False,  # Save credits
         }
 
-        try:
-            # Start actor run - fallback to other popular Google Maps scrapers
-            # if compass is not available.
-            # Using standard apify generic scraper or others like gaspardm/google-maps-scraper
-            actor_id = "drobnikj/crawler-google-places"
+        items = await self._run_actor("drobnikj/crawler-google-places", run_input)
+        if not items:
+            logger.warning("drobnikj actor failed or returned no items, trying fallback...")
+            items = await self._run_actor("gaspardm/google-maps-scraper", run_input)
 
-            # Use sync client in thread pool for async compatibility
-            loop = asyncio.get_event_loop()
-            try:
-                run = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.actor(actor_id).call(run_input=run_input)
-                )
-            except ApifyApiError as e:
-                # Fallback to another popular actor if first one fails
-                logger.warning(f"Actor {actor_id} failed, trying fallback: {e}")
-                actor_id = "gaspardm/google-maps-scraper"
-                run = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.actor(actor_id).call(run_input=run_input)
-                )
+        # Transform to standard format
+        results = []
+        for item in items:
+            result = {
+                "source": "google_maps",
+                "estate_name_raw": item.get("title", ""),
+                "district": district,
+                "state": state,
+                "latitude": item.get("latitude"),
+                "longitude": item.get("longitude"),
+                "phone": item.get("phone"),
+                "website": item.get("website"),
+                "instagram": self._extract_instagram(item),
+                "address_raw": item.get("address", item.get("street", "")),
+                "place_id": item.get("placeId"),
+                "category": item.get("categoryName", ""),
+                "geo_accuracy": "approximate" if item.get("location") else "unknown"
+            }
+            results.append(result)
 
-            if not run or not run.get("id"):
-                raise ApifyApiError("Failed to start actor run", 500)
+        return results
 
-            # Wait for completion with timeout
-            run_id = run["id"]
-            logger.info(f"Started actor run {run_id} for '{search_term}'")
+    async def run_indiamart_discovery(self, district: str, state: str, search_terms: List[str] = None) -> List[Dict[str, Any]]:
+        """Trigger IndiaMart scraper to find wholesale coffee estates."""
+        if not self.token or not self.is_available:
+            return []
 
-            # Poll for results (free tier may queue)
-            max_wait = 600  # 10 minutes
-            waited = 0
-            while waited < max_wait:
-                await asyncio.sleep(5)
-                waited += 5
+        search_terms = search_terms or ["coffee estate", "coffee planter", "green coffee beans"]
+        all_results = []
 
-                run_info = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.run(run_id).get()
-                )
-
-                status = run_info.get("status")
-                if status == "SUCCEEDED":
-                    break
-                elif status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-                    raise ApifyApiError(f"Run {run_id} {status}", 500)
-
-            # Fetch results from dataset
-            dataset_id = run_info.get("defaultDatasetId")
-            if not dataset_id:
-                return []
-
-            items = []
-            offset = 0
-            limit = 100
-
-            while True:
-                page = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.dataset(dataset_id).list_items(
-                        offset=offset,
-                        limit=limit
-                    )
-                )
-
-                page_items = page.get("items", [])
-                if not page_items:
-                    break
-
-                items.extend(page_items)
-                offset += len(page_items)
-
-                if len(page_items) < limit:
-                    break
-
-            # Transform to standard format
-            results = []
-            for item in items:
-                result = {
-                    "source": "google_maps",
-                    "estate_name_raw": item.get("title", ""),
-                    "district": district,
-                    "state": state,
-                    "latitude": item.get("latitude"),
-                    "longitude": item.get("longitude"),
-                    "phone": item.get("phone"),
-                    "website": item.get("website"),
-                    "instagram": self._extract_instagram(item),
-                    "address_raw": item.get("address", item.get("street", "")),
-                    "place_id": item.get("placeId"),
-                    "category": item.get("categoryName", ""),
-                    "geo_accuracy": "approximate" if item.get("location") else "unknown"
+        async with self._semaphore:
+            for term in search_terms:
+                query = f"{term} {district} {state}"
+                run_input = {
+                    "search": query,
+                    "maxItems": 50,
                 }
-                results.append(result)
 
-            return results
+                items = await self._run_actor("epctex/indiamart-scraper", run_input)
 
-        except ApifyApiError as e:
-            logger.error(f"Apify API error: {e}")
-            self._record_failure()
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error in maps search: {e}")
-            self._record_failure()
-            raise
+                for item in items:
+                    result = {
+                        "source": "indiamart",
+                        "estate_name_raw": item.get("companyName", item.get("title", "")),
+                        "district": district,
+                        "state": state,
+                        "phone": item.get("phoneNumber", item.get("mobile")),
+                        "address_raw": item.get("address", ""),
+                        "website": item.get("website", ""),
+                        "category": "indiamart_listing",
+                    }
+                    all_results.append(result)
+                await asyncio.sleep(2)
+
+        return all_results
+
+    async def run_justdial_discovery(self, district: str, state: str, search_terms: List[str] = None) -> List[Dict[str, Any]]:
+        """Trigger JustDial scraper for local business listings."""
+        if not self.token or not self.is_available:
+            return []
+
+        search_terms = search_terms or ["coffee estate", "coffee plantations"]
+        all_results = []
+
+        async with self._semaphore:
+            for term in search_terms:
+                location = f"{district}, {state}"
+                run_input = {
+                    "search": term,
+                    "location": location,
+                    "maxItems": 50,
+                }
+
+                items = await self._run_actor("epctex/justdial-scraper", run_input)
+
+                for item in items:
+                    result = {
+                        "source": "justdial",
+                        "estate_name_raw": item.get("title", item.get("name", "")),
+                        "district": district,
+                        "state": state,
+                        "phone": item.get("phone", item.get("mobile")),
+                        "address_raw": item.get("address", ""),
+                        "website": item.get("website", ""),
+                        "category": "justdial_listing",
+                    }
+                    all_results.append(result)
+                await asyncio.sleep(2)
+
+        return all_results
+
+    async def run_facebook_enrichment(self, urls: List[str]) -> Dict[str, str]:
+        """Crawl Facebook pages for about section info."""
+        if not self.token or not self.is_available or not urls:
+            return {}
+
+        fb_urls = [u for u in urls if 'facebook.com' in u.lower()]
+        if not fb_urls:
+            return {}
+
+        run_input = {
+            "startUrls": [{"url": u} for u in fb_urls],
+            "maxPosts": 5,
+        }
+
+        items = await self._run_actor("apify/facebook-pages-scraper", run_input)
+
+        results = {}
+        for item in items:
+            url = item.get("url", "")
+            about = item.get("about", "")
+            email = item.get("email", "")
+            phone = item.get("phone", "")
+
+            markdown = f"Facebook About:\n{about}\nEmail: {email}\nPhone: {phone}"
+            results[url] = markdown
+
+        return results
 
     def _extract_instagram(self, item: Dict) -> Optional[str]:
         """Extract Instagram handle from various possible fields."""

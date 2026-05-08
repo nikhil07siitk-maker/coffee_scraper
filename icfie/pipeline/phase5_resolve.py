@@ -241,6 +241,11 @@ class ResolutionEngine:
             "apeda_registered": "apeda_exporter" in flags,
         }
 
+        # If no coordinates were found, assign district_center or unknown
+        if best_lat is None or best_lon is None:
+            best_geo_acc = "district_center" if record.get("district") else "unknown"
+            record["geo_accuracy"] = best_geo_acc
+
         # Add ID for DB - use existing or deterministic
         best_id = None
         for r in cluster:
@@ -252,7 +257,7 @@ class ResolutionEngine:
             import uuid
             # Deterministic uuid based on name and coords
             name_str = best_name or "unknown"
-            coord_str = f"{best_lat}_{best_lon}"
+            coord_str = f"{best_lat or 0}_{best_lon or 0}"
             seed_str = f"{name_str}_{coord_str}"
             best_id = str(uuid.uuid5(uuid.NAMESPACE_OID, seed_str))
 
