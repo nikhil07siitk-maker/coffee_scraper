@@ -13,6 +13,7 @@ class GoogleClient:
     PLACES_TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
     ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
+    GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key
@@ -126,4 +127,57 @@ class GoogleClient:
             return None
         except Exception as e:
             logger.error(f"Google Elevation failed: {e}")
+            return None
+
+    async def reverse_geocode(self, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+        """Fetch structured address for coordinates."""
+        if not self.is_available or lat is None or lon is None:
+            return None
+
+        params = {
+            "latlng": f"{lat},{lon}",
+            "key": self.api_key
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.GEOCODING_URL, params=params) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+                    if data.get("status") == "OK" and data.get("results"):
+                        # Get the most specific result
+                        result = data["results"][0]
+                        components = result.get("address_components", [])
+
+                        village = ""
+                        taluka = ""
+                        district = ""
+                        state = ""
+                        pincode = ""
+
+                        for comp in components:
+                            types = comp.get("types", [])
+                            if "locality" in types or "sublocality" in types:
+                                village = comp.get("long_name")
+                            if "administrative_area_level_3" in types:
+                                taluka = comp.get("long_name")
+                            if "administrative_area_level_2" in types:
+                                district = comp.get("long_name")
+                            if "administrative_area_level_1" in types:
+                                state = comp.get("long_name")
+                            if "postal_code" in types:
+                                pincode = comp.get("long_name")
+
+                        return {
+                            "village_taluka": f"{village}, {taluka}".strip(", "),
+                            "district": district,
+                            "state": state,
+                            "pincode": pincode,
+                            "raw_address": result.get("formatted_address")
+                        }
+
+            return None
+        except Exception as e:
+            logger.error(f"Google Reverse Geocoding failed: {e}")
             return None

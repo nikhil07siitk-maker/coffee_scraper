@@ -1,6 +1,6 @@
 """SQLAlchemy / SQLite session manager."""
 
-from sqlalchemy import create_engine, Column, String, Float, Boolean, DateTime, JSON
+from sqlalchemy import create_engine, Column, String, Float, Boolean, DateTime, JSON, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 import uuid
 from datetime import datetime
@@ -51,6 +51,26 @@ def init_db(database_url: str = "sqlite:///./data/indian_coffee_intel.db"):
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
+
+    # Run auto-migrations for newly added columns
+    try:
+        with engine.begin() as conn:
+            # Check if altitude_meters exists
+            conn.execute(text("ALTER TABLE coffee_estates ADD COLUMN altitude_meters FLOAT"))
+    except Exception:
+        pass # Column exists
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE coffee_estates ADD COLUMN rating FLOAT"))
+    except Exception:
+        pass
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE coffee_estates ADD COLUMN user_ratings_total FLOAT"))
+    except Exception:
+        pass
 
 def get_session():
     if not SessionLocal:

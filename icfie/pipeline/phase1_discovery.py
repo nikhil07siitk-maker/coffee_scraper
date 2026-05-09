@@ -53,6 +53,10 @@ class DiscoveryOrchestrator:
         # Save raw output
         self._save_raw_output(unique_seeds, district)
 
+        # Cleanup sessions
+        await self.serper.close()
+        await self.brave.close()
+
         logger.info(f"Phase 1 complete. Found {len(unique_seeds)} unique seeds.")
         return unique_seeds
 

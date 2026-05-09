@@ -95,6 +95,10 @@ class SerperClient:
             )
         return self._session
 
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+
     async def search_estate_mentions(
         self,
         district: str,

@@ -7,6 +7,7 @@ import math
 from ..config.settings import Settings
 from ..core.models import EstateRecord, RecordStatus, GeoAccuracy
 from ..integrations.nominatim_client import NominatimClient
+from ..integrations.google_client import GoogleClient
 from ..services.geo_utils import haversine_distance
 
 logger = logging.getLogger("icfie.phase5")
@@ -15,6 +16,7 @@ class ResolutionEngine:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.nominatim = NominatimClient()
+        self.google = GoogleClient(settings.GOOGLE_API_KEY)
 
     async def run(self, verified_records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Deduplicate and convert to Golden Records."""
@@ -37,9 +39,15 @@ class ResolutionEngine:
 
             merged = self._merge_cluster(cluster)
 
-            # 3. Reverse Geocode (Nominatim)
+            # 3. Reverse Geocode (Google if available, else Nominatim)
             if merged.get("latitude") and merged.get("longitude"):
-                geo_info = await self.nominatim.reverse_geocode(merged["latitude"], merged["longitude"])
+                geo_info = None
+                if self.google.is_available:
+                    geo_info = await self.google.reverse_geocode(merged["latitude"], merged["longitude"])
+
+                if not geo_info:
+                    geo_info = await self.nominatim.reverse_geocode(merged["latitude"], merged["longitude"])
+
                 if geo_info and geo_info.get("village_taluka"):
                     merged["village_taluka"] = geo_info["village_taluka"]
 

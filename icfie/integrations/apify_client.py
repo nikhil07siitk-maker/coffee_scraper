@@ -232,12 +232,12 @@ class ApifyClient:
                     "maxItems": 50,
                 }
 
-                items = await self._run_actor("epctex/indiamart-scraper", run_input)
+                items = await self._run_actor("codingfrontend/indiamart-search-scraper", run_input)
 
                 for item in items:
                     result = {
                         "source": "indiamart",
-                        "estate_name_raw": item.get("companyName", item.get("title", "")),
+                        "estate_name_raw": item.get("companyName", item.get("title", item.get("name", ""))),
                         "district": district,
                         "state": state,
                         "phone": item.get("phoneNumber", item.get("mobile")),
@@ -262,12 +262,12 @@ class ApifyClient:
             for term in search_terms:
                 location = f"{district}, {state}"
                 run_input = {
-                    "search": term,
-                    "location": location,
+                    "search": f"{term} in {location}",
                     "maxItems": 50,
                 }
 
-                items = await self._run_actor("epctex/justdial-scraper", run_input)
+                # using a verified actor ID from Apify
+                items = await self._run_actor("codingfrontend/justdial-business-search-scraper", run_input)
 
                 for item in items:
                     result = {
