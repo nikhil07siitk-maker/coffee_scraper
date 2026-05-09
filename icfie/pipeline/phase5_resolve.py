@@ -192,6 +192,9 @@ class ResolutionEngine:
         ig = None
         export = "unknown"
         address = None
+        altitude = None
+        rating = None
+        rating_total = None
 
         # Iterate to collect
         for r in cluster:
@@ -204,11 +207,16 @@ class ResolutionEngine:
             if c := e.get("certifications"): certs.update(c)
             if f := e.get("quality_flag"): flags.update(f)
 
-            # Strings (take first valid)
+            # Strings and floats (take first valid)
             if not website and (w := s.get("website") or s.get("link")): website = w
             if not phone and (p := s.get("phone")): phone = p
             if not ig and (i := s.get("instagram")): ig = i
             if not address and (a := s.get("address_raw") or e.get("address_hint")): address = a
+            if not altitude and (alt := e.get("altitude_meters")): altitude = alt
+
+            if not rating and (rt := e.get("rating")):
+                rating = rt
+                rating_total = e.get("user_ratings_total")
 
             # Export (escalate)
             if e.get("export_readiness") == "verified_exporter":
@@ -232,6 +240,9 @@ class ResolutionEngine:
             "primary_phone": phone,
             "instagram_handle": ig,
             "address_raw": address,
+            "altitude_meters": altitude,
+            "rating": rating,
+            "user_ratings_total": rating_total,
             "varietals_grown": list(varietals) if varietals else None,
             "processing_methods": list(processing) if processing else None,
             "certifications": list(certs) if certs else None,

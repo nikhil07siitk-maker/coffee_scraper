@@ -12,6 +12,7 @@ from ..integrations.apify_client import ApifyClient
 from ..integrations.serper_client import SerperClient
 from ..integrations.brave_client import BraveClient
 from ..integrations.overpass_client import OverpassClient
+from ..integrations.google_client import GoogleClient
 
 logger = logging.getLogger("icfie.phase1")
 
@@ -22,6 +23,7 @@ class DiscoveryOrchestrator:
         self.serper = SerperClient(settings.SERPER_API_KEY, settings.SERPER_MONTHLY_LIMIT)
         self.brave = BraveClient(settings.BRAVE_API_KEY, settings.BRAVE_MONTHLY_LIMIT)
         self.overpass = OverpassClient()
+        self.google = GoogleClient(settings.GOOGLE_API_KEY)
 
     async def run(self, district: str, state: str) -> List[Dict[str, Any]]:
         logger.info(f"Starting Phase 1 Discovery for {district}, {state}")
@@ -55,9 +57,13 @@ class DiscoveryOrchestrator:
         return unique_seeds
 
     async def _run_maps(self, district: str, state: str) -> List[Dict]:
-        return await self.apify.run_google_maps_discovery(
-            district, state, max_results=self.settings.MAX_MAPS_RESULTS
-        )
+        if self.google.is_available:
+            logger.info("Using native Google Places API for Maps discovery")
+            return await self.google.search_places(f"coffee estates in {district} {state}")
+        else:
+            return await self.apify.run_google_maps_discovery(
+                district, state, max_results=self.settings.MAX_MAPS_RESULTS
+            )
 
     async def _run_search(self, district: str, state: str) -> List[Dict]:
         # Try Serper first

@@ -64,6 +64,11 @@ class EstateEnrichment(BaseModel):
     social_bio: Optional[str] = None
     social_captions_sample: Optional[str] = None
 
+    # Google API enrichment
+    altitude_meters: Optional[float] = None
+    rating: Optional[float] = None
+    user_ratings_total: Optional[int] = None
+
     # Phase 3: LLM extraction
     estate_name: Optional[str] = None
     varietals_grown: Optional[List[str]] = None
@@ -103,6 +108,9 @@ class EstateRecord(BaseModel):
 
     # Tier 3: Full Enrichment
     village_taluka: Optional[str] = None
+    altitude_meters: Optional[float] = None
+    rating: Optional[float] = None
+    user_ratings_total: Optional[int] = None
     varietals_grown: Optional[List[str]] = None
     processing_methods: Optional[List[str]] = None
     certifications: Optional[List[str]] = None

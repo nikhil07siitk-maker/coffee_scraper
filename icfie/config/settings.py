@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     APIFY_API_TOKEN: Optional[str] = None
     SERPER_API_KEY: Optional[str] = None
     BRAVE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
 
     # Local LLM
     OLLAMA_HOST: str = "http://localhost:11434"

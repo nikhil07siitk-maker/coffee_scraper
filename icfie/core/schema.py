@@ -17,7 +17,8 @@ TIER2_FIELDS = [
 ]
 
 TIER3_FIELDS = [
-    'village_taluka', 'varietals_grown', 'processing_methods',
+    'village_taluka', 'altitude_meters', 'rating', 'user_ratings_total',
+    'varietals_grown', 'processing_methods',
     'certifications', 'farm_size_acres', 'contact_person_name',
     'export_readiness', 'rcmc_verified', 'apeda_registered',
     'quality_flag', 'bhuvan_verified', 'llm_confidence_score',
